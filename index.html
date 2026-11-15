@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-HK">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>庫存管理系統</title>
+  <meta name="color-scheme" content="light" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2317324d'/%3E%3Crect x='6' y='10' width='9' height='12' rx='1.5' fill='%23f3d48a'/%3E%3Crect x='17' y='10' width='9' height='12' rx='1.5' fill='%23d7e6f4'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <rect x="2" y="6" width="8" height="11" rx="1.4" fill="#f3d48a"/>
+            <rect x="12" y="6" width="8" height="11" rx="1.4" fill="#d7e6f4"/>
+            <path d="M6 6V5.2A2.2 2.2 0 0 1 8.2 3h5.6A2.2 2.2 0 0 1 16 5.2V6" stroke="white" stroke-width="1.3"/>
+          </svg>
+        </div>
+        <div>
+          <h1>庫存管理系統</h1>
+          <p>本地運作 · 資料自動儲存在此瀏覽器</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="btn btn-ghost" id="btn-import-excel">匯入 Excel</button>
+        <button type="button" class="btn btn-ghost" id="btn-export-excel">匯出 Excel</button>
+        <button type="button" class="btn btn-ghost" id="btn-export-stocktake">匯出盤點表</button>
+        <button type="button" class="btn btn-ghost" id="btn-archive-period">盤點封存</button>
+        <button type="button" class="btn btn-ghost" id="btn-history">過往紀錄</button>
+        <button type="button" class="btn btn-ghost" id="btn-backup-json">下載 JSON 備份</button>
+        <button type="button" class="btn btn-ghost" id="btn-restore-json">還原 JSON</button>
+        <button type="button" class="btn btn-ghost" id="btn-reset">重置為匯入原始資料</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <section id="view-catalog" class="view"></section>
+      <section id="view-product" class="view" hidden></section>
+      <section id="view-history" class="view" hidden></section>
+    </main>
+  </div>
+
+  <div id="modal-root" class="modal-root" hidden>
+    <div class="modal" id="modal">
+      <div class="modal-header">
+        <h2 id="modal-title"></h2>
+        <button type="button" class="icon-btn" id="modal-close" aria-label="關閉">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-footer" id="modal-footer"></div>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toast-wrap"></div>
+  <input id="file-excel" class="hidden-file" type="file" accept=".xlsx,.xlsm,.xls" />
+  <input id="file-json" class="hidden-file" type="file" accept=".json,application/json" />
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/excel.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
