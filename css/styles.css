@@ -822,3 +822,25 @@ table.data .neg { color: var(--danger); background: var(--danger-soft); }
 @media (max-width: 560px) {
   .summary-grid { grid-template-columns: 1fr; }
 }
+
+.login-gate {
+  max-width: 34rem;
+  margin: 8vh auto 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 28px 28px 24px;
+  text-align: left;
+}
+.login-gate h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+.login-gate .help {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}

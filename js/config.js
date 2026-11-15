@@ -9,7 +9,7 @@
   global.INVENTORY_CONFIG = {
     msal: {
       clientId: clientId,
-      authority: "https://login.microsoftonline.com/common",
+      authority: "https://login.microsoftonline.com/a15becb0-be16-4b9f-8f3b-a2565c791718",
       redirectUri: "https://hoyau1992.github.io/inventory-app/"
     },
     scopes: ["Files.ReadWrite.AppFolder", "User.Read"],

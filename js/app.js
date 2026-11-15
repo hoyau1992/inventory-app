@@ -16,14 +16,17 @@
   var selectionProductCode = null;
   var historyQuery = "";
   var historySideFilter = "out"; // out | in | all
+  var lastUnlocked = null;
 
   var el = {
+    login: document.getElementById("view-login"),
     books: document.getElementById("view-books"),
     catalog: document.getElementById("view-catalog"),
     product: document.getElementById("view-product"),
     history: document.getElementById("view-history"),
     brandSubtitle: document.getElementById("brand-subtitle"),
     headerBookActions: document.getElementById("header-book-actions"),
+    btnBooks: document.getElementById("btn-books"),
     syncStatus: document.getElementById("sync-status"),
     modalRoot: document.getElementById("modal-root"),
     modal: document.getElementById("modal"),
@@ -103,7 +106,7 @@
         : '<p class="sync-note">請在公開網站登入</p>';
       el.syncStatus.innerHTML =
         hint +
-        '<button type="button" class="btn btn-ghost" id="btn-onedrive-login">登入 OneDrive</button>';
+        '<button type="button" class="btn btn-ghost" id="btn-onedrive-login">登入 Microsoft</button>';
       return;
     }
     var name = (info.account && (info.account.name || info.account.email)) || "已登入";
@@ -1049,11 +1052,44 @@
     return current ? current.name : "";
   }
 
-  function updateHeaderChrome() {
-    var isBooks = view.name === "books";
-    if (el.headerBookActions) el.headerBookActions.hidden = isBooks;
-    if (!el.brandSubtitle) return;
+  function isAppUnlocked() {
     var info = syncStatusInfo();
+    if (!info || !info.configured) return true;
+    return !!info.signedIn;
+  }
+
+  function renderLogin() {
+    if (!el.login) return;
+    var info = syncStatusInfo() || {};
+    var canLogin = !!info.configured && !!info.expectedOrigin;
+    var help = canLogin
+      ? "此程式只供智祥運通有限公司的 Microsoft 帳戶使用。登入後先見到庫存功能，資料會同步到你的 OneDrive。"
+      : "此程式只供智祥運通有限公司的 Microsoft 帳戶使用。請用公開網站開啟，不要用本機檔案直接打開。";
+    el.login.innerHTML =
+      '<div class="login-gate"><h2>請先登入</h2><p class="help">' +
+      help +
+      "</p>" +
+      (canLogin
+        ? '<button type="button" class="btn btn-primary" id="btn-login-main">登入 Microsoft</button>'
+        : "") +
+      "</div>";
+  }
+
+  function updateHeaderChrome() {
+    var unlocked = isAppUnlocked();
+    var isBooks = view.name === "books";
+    if (el.btnBooks) el.btnBooks.hidden = !unlocked;
+    if (el.headerBookActions) el.headerBookActions.hidden = !unlocked || isBooks;
+    if (!el.brandSubtitle) {
+      updateSyncStatus();
+      return;
+    }
+    var info = syncStatusInfo();
+    if (!unlocked) {
+      el.brandSubtitle.textContent = "請先以公司帳戶登入";
+      updateSyncStatus();
+      return;
+    }
     var storageHint = info && info.signedIn ? "資料會同步到 OneDrive" : "資料儲存在此瀏覽器";
     if (isBooks) {
       el.brandSubtitle.textContent = "各份庫存表獨立存放 · " + storageHint;
@@ -1181,6 +1217,18 @@
   }
 
   function render() {
+    var unlocked = isAppUnlocked();
+    if (el.login) el.login.hidden = unlocked;
+    if (!unlocked) {
+      el.books.hidden = true;
+      el.catalog.hidden = true;
+      el.product.hidden = true;
+      el.history.hidden = true;
+      if (el.modalRoot && !el.modalRoot.hidden) closeModal();
+      updateHeaderChrome();
+      renderLogin();
+      return;
+    }
     var isBooks = view.name === "books";
     var isCatalog = view.name === "catalog";
     var isProduct = view.name === "product";
@@ -2145,10 +2193,23 @@
     });
   }
 
+  document.addEventListener("click", function (ev) {
+    if (ev.target.closest("#btn-login-main") && Inventory.Sync) {
+      Inventory.Sync.signIn();
+    }
+  });
+
   function boot() {
     var start = Inventory.Sync && Inventory.Sync.boot
       ? Inventory.Sync.boot({
           onStatus: function () {
+            var info = syncStatusInfo();
+            var unlocked = !info || !info.configured || !!info.signedIn;
+            if (lastUnlocked === null || unlocked !== lastUnlocked) {
+              lastUnlocked = unlocked;
+              render();
+              return;
+            }
             updateSyncStatus();
             if (el.brandSubtitle) updateHeaderChrome();
           },

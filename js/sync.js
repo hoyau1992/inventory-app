@@ -148,6 +148,17 @@
     if (combined.indexOf("consent") >= 0) {
       return "未授予 OneDrive 權限";
     }
+    if (
+      combined.indexOf("aadsts50020") >= 0 ||
+      combined.indexOf("aadsts500213") >= 0 ||
+      combined.indexOf("aadsts50034") >= 0 ||
+      combined.indexOf("not exist in tenant") >= 0 ||
+      combined.indexOf("does not exist in this tenant") >= 0 ||
+      combined.indexOf("personal microsoft account") >= 0 ||
+      combined.indexOf("cannot be used to sign in") >= 0
+    ) {
+      return "此程式只供智祥運通有限公司的帳戶登入";
+    }
     if (combined.indexOf("network") >= 0 || combined.indexOf("failed to fetch") >= 0) {
       return "無法連接 Microsoft 登入";
     }
