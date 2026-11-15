@@ -21,10 +21,12 @@
         </div>
         <div>
           <h1>庫存管理系統</h1>
-          <p>本地運作 · 資料自動儲存在此瀏覽器</p>
+          <p id="brand-subtitle">本地運作 · 資料自動儲存在此瀏覽器</p>
         </div>
       </div>
       <div class="header-actions">
+        <button type="button" class="btn btn-ghost" id="btn-books">庫存表</button>
+        <div class="header-book-actions" id="header-book-actions">
         <button type="button" class="btn btn-ghost" id="btn-import-excel">匯入 Excel</button>
         <button type="button" class="btn btn-ghost" id="btn-export-excel">匯出 Excel</button>
         <button type="button" class="btn btn-ghost" id="btn-export-stocktake">匯出盤點表</button>
@@ -33,11 +35,13 @@
         <button type="button" class="btn btn-ghost" id="btn-backup-json">下載 JSON 備份</button>
         <button type="button" class="btn btn-ghost" id="btn-restore-json">還原 JSON</button>
         <button type="button" class="btn btn-ghost" id="btn-reset">重置為匯入原始資料</button>
+        </div>
       </div>
     </header>
 
     <main class="app-main">
-      <section id="view-catalog" class="view"></section>
+      <section id="view-books" class="view"></section>
+      <section id="view-catalog" class="view" hidden></section>
       <section id="view-product" class="view" hidden></section>
       <section id="view-history" class="view" hidden></section>
     </main>

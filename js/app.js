@@ -2,10 +2,11 @@
   "use strict";
 
   var Store = Inventory.Store;
+  var Books = Inventory.Books;
   var Excel = Inventory.Excel;
 
   var state = Store.load();
-  var view = { name: "catalog", code: null };
+  var view = { name: "books", code: null };
   var catalogQuery = "";
   var catalogFilter = "all"; // all | instock | zero
   var catalogSort = { key: "index", dir: "asc" };
@@ -17,9 +18,12 @@
   var historySideFilter = "out"; // out | in | all
 
   var el = {
+    books: document.getElementById("view-books"),
     catalog: document.getElementById("view-catalog"),
     product: document.getElementById("view-product"),
     history: document.getElementById("view-history"),
+    brandSubtitle: document.getElementById("brand-subtitle"),
+    headerBookActions: document.getElementById("header-book-actions"),
     modalRoot: document.getElementById("modal-root"),
     modal: document.getElementById("modal"),
     modalTitle: document.getElementById("modal-title"),
@@ -960,14 +964,150 @@
     }
   }
 
+  function currentBookName() {
+    var current = Books.getCurrent();
+    return current ? current.name : "";
+  }
+
+  function updateHeaderChrome() {
+    var isBooks = view.name === "books";
+    if (el.headerBookActions) el.headerBookActions.hidden = isBooks;
+    if (!el.brandSubtitle) return;
+    if (isBooks) {
+      el.brandSubtitle.textContent = "各份庫存表獨立存放 · 資料儲存在此瀏覽器";
+    } else {
+      var name = currentBookName();
+      el.brandSubtitle.textContent = name
+        ? "目前：" + name + " · 資料儲存在此瀏覽器"
+        : "本地運作 · 資料自動儲存在此瀏覽器";
+    }
+  }
+
+  function loadCurrentBookState() {
+    state = Store.load();
+    issueBannerHidden = false;
+    catalogQuery = "";
+    catalogFilter = "all";
+    catalogSort = { key: "index", dir: "asc" };
+    clearLedgerSelection();
+    historyQuery = "";
+    return state;
+  }
+
+  function openBook(id) {
+    Books.switchTo(id);
+    loadCurrentBookState();
+    view = { name: "catalog", code: null };
+    render();
+  }
+
+  function showBooksPicker() {
+    view = { name: "books", code: null, archiveId: null };
+    render();
+  }
+
+  function openBookNameModal(opts) {
+    openModal({
+      title: opts.title,
+      body:
+        '<form id="book-form">' +
+        '<div class="form-grid"><div class="field full"><label>庫存表名稱</label>' +
+        '<input name="name" type="text" maxlength="80" required value="' +
+        escapeHtml(opts.value || "") +
+        '" placeholder="例如：顯示卡、SSD、主板" /></div></div>' +
+        (opts.help ? '<p class="help">' + opts.help + "</p>" : "") +
+        "</form>",
+      buttons: [
+        { label: "取消", className: "btn-light", onClick: closeModal },
+        {
+          label: opts.confirmLabel || "確定",
+          className: "btn-primary",
+          onClick: function () {
+            var input = document.querySelector("#book-form [name=name]");
+            var name = (input && input.value ? input.value : "").trim();
+            if (!name) {
+              toast("請輸入庫存表名稱", "error");
+              if (input) input.focus();
+              return;
+            }
+            opts.onConfirm(name);
+          }
+        }
+      ]
+    });
+    var form = document.getElementById("book-form");
+    if (form) {
+      form.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        var confirmBtn = el.modalFooter.querySelector(".btn-primary");
+        if (confirmBtn) confirmBtn.click();
+      });
+    }
+  }
+
+  function renderBooks() {
+    var books = Books.list();
+    var cards = books
+      .map(function (book) {
+        var summary = Books.summarize(book.id);
+        var current = Books.getCurrent();
+        var isCurrent = current && current.id === book.id;
+        return (
+          '<article class="book-card' +
+          (isCurrent ? " current" : "") +
+          '" data-book-id="' +
+          escapeHtml(book.id) +
+          '">' +
+          "<div><h3>" +
+          escapeHtml(book.name) +
+          (isCurrent ? '<span class="book-current-tag">目前</span>' : "") +
+          "</h3>" +
+          '<p class="book-meta">貨品數量 <strong>' +
+          formatNumber(summary.productCount) +
+          "</strong></p>" +
+          '<p class="book-meta">現存數量 <strong>' +
+          formatNumber(summary.stockQty) +
+          "</strong>　現存箱數 <strong>" +
+          formatNumber(summary.stockBoxes) +
+          "</strong></p></div>" +
+          '<div class="book-card-actions">' +
+          '<button type="button" class="btn btn-primary" data-open-book="' +
+          escapeHtml(book.id) +
+          '">打開</button>' +
+          '<button type="button" class="btn btn-light" data-rename-book="' +
+          escapeHtml(book.id) +
+          '">重新命名</button>' +
+          '<button type="button" class="btn btn-danger-outline" data-delete-book="' +
+          escapeHtml(book.id) +
+          '">刪除</button>' +
+          "</div></article>"
+        );
+      })
+      .join("");
+
+    el.books.innerHTML =
+      '<div class="books-header">' +
+      '<div><h2>庫存表</h2><p class="help">每份庫存表獨立存放，匯入同操作都唔會同其他表混合。打開後即可匯入 Excel、出入庫同盤點。</p></div>' +
+      '<button type="button" class="btn btn-primary" id="btn-add-book">新增庫存表</button>' +
+      "</div>" +
+      (books.length
+        ? '<div class="books-grid">' + cards + "</div>"
+        : '<div class="empty-state books-empty"><p>尚未有庫存表。請先新增一份，再按「匯入 Excel」。</p>' +
+          '<button type="button" class="btn btn-primary" id="btn-add-book-empty">新增庫存表</button></div>');
+  }
+
   function render() {
+    var isBooks = view.name === "books";
     var isCatalog = view.name === "catalog";
     var isProduct = view.name === "product";
     var isHistory = view.name === "history";
+    el.books.hidden = !isBooks;
     el.catalog.hidden = !isCatalog;
     el.product.hidden = !isProduct;
     el.history.hidden = !isHistory;
-    if (isCatalog) renderCatalog();
+    updateHeaderChrome();
+    if (isBooks) renderBooks();
+    else if (isCatalog) renderCatalog();
     else if (isProduct) renderProduct();
     else renderHistory();
   }
@@ -1412,6 +1552,11 @@
         var imported = Excel.importWorkbook(ev.target.result, file.name);
         imported.archives = Store.deepClone(state.archives || []);
         persist(Store.replaceAll(imported));
+        Store.saveOriginal({
+          sourceName: imported.sourceName,
+          dataIssues: imported.dataIssues,
+          products: imported.products
+        });
         view = { name: "catalog", code: null };
         issueBannerHidden = false;
         toast("已匯入 " + imported.products.length + " 款貨品");
@@ -1431,6 +1576,7 @@
           throw new Error("此 JSON 不是有效的庫存備份");
         }
         persist(Store.replaceAll(parsed));
+        Store.saveOriginal(parsed);
         view = { name: "catalog", code: null };
         issueBannerHidden = false;
         toast("已還原 " + parsed.products.length + " 款貨品");
@@ -1441,7 +1587,14 @@
     reader.readAsText(file, "utf-8");
   }
 
+  document.getElementById("btn-books").addEventListener("click", function () {
+    showBooksPicker();
+  });
   document.getElementById("btn-import-excel").addEventListener("click", function () {
+    if (!Books.getCurrent()) {
+      toast("請先打開或新增庫存表", "error");
+      return;
+    }
     if (!confirmAction("匯入 Excel 會取代目前貨品資料（本機修改會被覆蓋），但已封存的過往紀錄會保留。建議先匯出備份。確定繼續？")) return;
     el.fileExcel.value = "";
     el.fileExcel.click();
@@ -1481,6 +1634,87 @@
   });
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "Escape" && !el.modalRoot.hidden) closeModal();
+  });
+
+  function promptNewBook() {
+    openBookNameModal({
+      title: "新增庫存表",
+      confirmLabel: "新增並打開",
+      help: "新增後會打開空白庫存表，然後可按「匯入 Excel」。資料唔會同其他庫存表混合。",
+      onConfirm: function (name) {
+        try {
+          var book = Books.create(name);
+          closeModal();
+          loadCurrentBookState();
+          view = { name: "catalog", code: null };
+          render();
+          toast("已新增「" + book.name + "」，可按「匯入 Excel」匯入此表");
+        } catch (err) {
+          toast(err.message || String(err), "error");
+        }
+      }
+    });
+  }
+
+  function promptRenameBook(id) {
+    var books = Books.list();
+    var book = null;
+    for (var i = 0; i < books.length; i++) if (books[i].id === id) book = books[i];
+    if (!book) return;
+    openBookNameModal({
+      title: "重新命名庫存表",
+      value: book.name,
+      confirmLabel: "儲存名稱",
+      onConfirm: function (name) {
+        try {
+          Books.rename(id, name);
+          closeModal();
+          render();
+          toast("已重新命名");
+        } catch (err) {
+          toast(err.message || String(err), "error");
+        }
+      }
+    });
+  }
+
+  function promptDeleteBook(id) {
+    var books = Books.list();
+    var book = null;
+    for (var i = 0; i < books.length; i++) if (books[i].id === id) book = books[i];
+    if (!book) return;
+    if (!confirmAction("確定刪除「" + book.name + "」？此庫存表的資料會被移除，不會影響其他庫存表。")) return;
+    try {
+      Books.remove(id);
+      state = Store.load();
+      clearLedgerSelection();
+      view = { name: "books", code: null, archiveId: null };
+      render();
+      toast("已刪除「" + book.name + "」");
+    } catch (err) {
+      toast(err.message || String(err), "error");
+    }
+  }
+
+  el.books.addEventListener("click", function (ev) {
+    if (ev.target.closest("#btn-add-book") || ev.target.closest("#btn-add-book-empty")) {
+      promptNewBook();
+      return;
+    }
+    var openBtn = ev.target.closest("[data-open-book]");
+    if (openBtn) {
+      openBook(openBtn.getAttribute("data-open-book"));
+      return;
+    }
+    var renameBtn = ev.target.closest("[data-rename-book]");
+    if (renameBtn) {
+      promptRenameBook(renameBtn.getAttribute("data-rename-book"));
+      return;
+    }
+    var deleteBtn = ev.target.closest("[data-delete-book]");
+    if (deleteBtn) {
+      promptDeleteBook(deleteBtn.getAttribute("data-delete-book"));
+    }
   });
 
   el.catalog.addEventListener("input", function (ev) {

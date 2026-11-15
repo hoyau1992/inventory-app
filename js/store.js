@@ -1,7 +1,10 @@
 (function (global) {
   "use strict";
 
-  var STORAGE_KEY = "inventory-app-v1";
+  var LEGACY_KEY = "inventory-app-v1";
+  var BOOKS_INDEX_KEY = "inventory-app-books-v1";
+  var BOOK_KEY_PREFIX = "inventory-app-v1::book::";
+  var LEGACY_BOOK_ID = "book_legacy";
   var Inventory = global.Inventory || {};
 
   function deepClone(value) {
@@ -265,6 +268,10 @@
     };
   }
 
+  function emptyState() {
+    return normalizeState({ products: [], archives: [], sourceName: "", dataIssues: [] });
+  }
+
   function getOriginal() {
     if (!global.INVENTORY_ORIGINAL) {
       throw new Error("找不到內建原始資料");
@@ -272,12 +279,38 @@
     return normalizeState(deepClone(global.INVENTORY_ORIGINAL));
   }
 
-  function readStorage() {
+  function storageGet(key) {
     try {
       if (!global.localStorage) return null;
-      var raw = global.localStorage.getItem(STORAGE_KEY);
+      return global.localStorage.getItem(key);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function storageSet(key, value) {
+    if (!global.localStorage) return;
+    global.localStorage.setItem(key, value);
+  }
+
+  function storageRemove(key) {
+    if (!global.localStorage) return;
+    global.localStorage.removeItem(key);
+  }
+
+  function readJson(key) {
+    try {
+      var raw = storageGet(key);
       if (!raw) return null;
-      var parsed = JSON.parse(raw);
+      return JSON.parse(raw);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function readLegacyState() {
+    try {
+      var parsed = readJson(LEGACY_KEY);
       if (!parsed || !Array.isArray(parsed.products)) return null;
       return normalizeState(parsed);
     } catch (err) {
@@ -285,14 +318,160 @@
     }
   }
 
-  function writeStorage(state) {
-    if (!global.localStorage) return;
-    global.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  function bookStateKey(id) {
+    return BOOK_KEY_PREFIX + id;
   }
 
-  function clearStorage() {
-    if (!global.localStorage) return;
-    global.localStorage.removeItem(STORAGE_KEY);
+  function bookOriginalKey(id) {
+    return BOOK_KEY_PREFIX + id + "::original";
+  }
+
+  function readBookState(id) {
+    if (!id) return null;
+    try {
+      var parsed = readJson(bookStateKey(id));
+      if (!parsed || !Array.isArray(parsed.products)) return null;
+      return normalizeState(parsed);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function writeBookState(id, state) {
+    if (!id) return;
+    storageSet(bookStateKey(id), JSON.stringify(normalizeState(state)));
+  }
+
+  function readBookOriginal(id) {
+    if (!id) return null;
+    try {
+      var parsed = readJson(bookOriginalKey(id));
+      if (!parsed || !Array.isArray(parsed.products)) return null;
+      return normalizeState(parsed);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function originalSnapshot(data) {
+    var n = normalizeState(data);
+    return {
+      version: 1,
+      sourceName: n.sourceName || "",
+      dataIssues: deepClone(n.dataIssues || []),
+      products: deepClone(n.products || [])
+    };
+  }
+
+  function writeBookOriginal(id, data) {
+    if (!id) return;
+    storageSet(bookOriginalKey(id), JSON.stringify(originalSnapshot(data)));
+  }
+
+  function normalizeBookMeta(book) {
+    var src = book && typeof book === "object" ? book : {};
+    return {
+      id: String(src.id || "").trim(),
+      name: String(src.name || "").trim(),
+      createdAt: src.createdAt || new Date().toISOString()
+    };
+  }
+
+  function normalizeBooksIndex(data) {
+    var src = data && typeof data === "object" ? data : {};
+    var books = Array.isArray(src.books) ? src.books.map(normalizeBookMeta).filter(function (book) {
+      return !!book.id;
+    }) : [];
+    var currentId = src.currentId ? String(src.currentId) : null;
+    var found = false;
+    for (var i = 0; i < books.length; i++) {
+      if (books[i].id === currentId) found = true;
+    }
+    if (!found) currentId = null;
+    return { version: 1, currentId: currentId, books: books };
+  }
+
+  function readBooksIndexRaw() {
+    var raw = storageGet(BOOKS_INDEX_KEY);
+    if (raw === null || raw === undefined) return null;
+    try {
+      var parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.books)) return normalizeBooksIndex({ version: 1, currentId: null, books: [] });
+      return normalizeBooksIndex(parsed);
+    } catch (err) {
+      return normalizeBooksIndex({ version: 1, currentId: null, books: [] });
+    }
+  }
+
+  function writeBooksIndex(index) {
+    storageSet(BOOKS_INDEX_KEY, JSON.stringify(normalizeBooksIndex(index)));
+  }
+
+  var booksIndexCache = null;
+
+  function migrateLegacyIfNeeded() {
+    var existing = readBooksIndexRaw();
+    if (existing) {
+      booksIndexCache = existing;
+      return existing;
+    }
+    var legacy = readLegacyState();
+    var index;
+    if (legacy) {
+      writeBookState(LEGACY_BOOK_ID, legacy);
+      writeBookOriginal(LEGACY_BOOK_ID, legacy);
+      index = normalizeBooksIndex({
+        version: 1,
+        currentId: LEGACY_BOOK_ID,
+        books: [
+          {
+            id: LEGACY_BOOK_ID,
+            name: "庫存表 1",
+            createdAt: new Date().toISOString()
+          }
+        ]
+      });
+    } else {
+      index = normalizeBooksIndex({ version: 1, currentId: null, books: [] });
+    }
+    writeBooksIndex(index);
+    booksIndexCache = index;
+    return index;
+  }
+
+  function loadBooksIndex() {
+    if (booksIndexCache) return booksIndexCache;
+    booksIndexCache = migrateLegacyIfNeeded();
+    return booksIndexCache;
+  }
+
+  function saveBooksIndex(index) {
+    booksIndexCache = normalizeBooksIndex(index);
+    writeBooksIndex(booksIndexCache);
+    return booksIndexCache;
+  }
+
+  function getCurrentId() {
+    return loadBooksIndex().currentId || null;
+  }
+
+  function findBookMeta(id) {
+    var index = loadBooksIndex();
+    var target = String(id || "");
+    for (var i = 0; i < index.books.length; i++) {
+      if (index.books[i].id === target) return index.books[i];
+    }
+    return null;
+  }
+
+  function requireCurrentId() {
+    var id = getCurrentId();
+    if (!id) throw new Error("請先選擇或新增庫存表");
+    return id;
+  }
+
+  function writeCurrentStorage(state) {
+    writeBookState(requireCurrentId(), state);
   }
 
   function findProductIndex(state, code) {
@@ -330,7 +509,10 @@
   }
 
   var Store = {
-    key: STORAGE_KEY,
+    key: LEGACY_KEY,
+    booksIndexKey: BOOKS_INDEX_KEY,
+    bookStateKey: bookStateKey,
+    bookOriginalKey: bookOriginalKey,
     deepClone: deepClone,
     genId: genId,
     lineQty: lineQty,
@@ -343,32 +525,38 @@
     wouldBeNegative: wouldBeNegative,
 
     load: function () {
-      return readStorage() || getOriginal();
+      loadBooksIndex();
+      var id = getCurrentId();
+      if (!id) return emptyState();
+      return readBookState(id) || emptyState();
     },
 
     save: function (state) {
       var normalized = normalizeState(state);
-      writeStorage(normalized);
+      writeCurrentStorage(normalized);
       return normalized;
     },
 
     fromOriginal: function () {
-      var state = getOriginal();
-      writeStorage(state);
-      return state;
+      return Store.resetToOriginal();
     },
 
     resetToOriginal: function () {
-      clearStorage();
-      var state = getOriginal();
-      writeStorage(state);
+      var id = requireCurrentId();
+      var original = readBookOriginal(id);
+      var state = original ? normalizeState(original) : emptyState();
+      writeBookState(id, state);
       return state;
     },
 
     replaceAll: function (data) {
       var state = normalizeState(data);
-      writeStorage(state);
+      writeCurrentStorage(state);
       return state;
+    },
+
+    saveOriginal: function (data) {
+      writeBookOriginal(requireCurrentId(), data);
     },
 
     toBackup: function (state) {
@@ -598,6 +786,91 @@
     }
   };
 
+  var Books = {
+    list: function () {
+      return loadBooksIndex().books.map(function (book) {
+        return {
+          id: book.id,
+          name: book.name,
+          createdAt: book.createdAt
+        };
+      });
+    },
+
+    getCurrent: function () {
+      var id = getCurrentId();
+      return id ? findBookMeta(id) : null;
+    },
+
+    create: function (name) {
+      var trimmed = String(name || "").trim();
+      if (!trimmed) throw new Error("請輸入庫存表名稱");
+      var index = loadBooksIndex();
+      var book = {
+        id: genId("book"),
+        name: trimmed,
+        createdAt: new Date().toISOString()
+      };
+      var blank = emptyState();
+      writeBookState(book.id, blank);
+      writeBookOriginal(book.id, blank);
+      index.books.push(book);
+      index.currentId = book.id;
+      saveBooksIndex(index);
+      return {
+        id: book.id,
+        name: book.name,
+        createdAt: book.createdAt
+      };
+    },
+
+    rename: function (id, name) {
+      var trimmed = String(name || "").trim();
+      if (!trimmed) throw new Error("請輸入庫存表名稱");
+      var index = loadBooksIndex();
+      var found = false;
+      for (var i = 0; i < index.books.length; i++) {
+        if (index.books[i].id === id) {
+          index.books[i].name = trimmed;
+          found = true;
+          break;
+        }
+      }
+      if (!found) throw new Error("找不到庫存表");
+      saveBooksIndex(index);
+      return findBookMeta(id);
+    },
+
+    remove: function (id) {
+      var target = String(id || "");
+      var index = loadBooksIndex();
+      var before = index.books.length;
+      index.books = index.books.filter(function (book) {
+        return book.id !== target;
+      });
+      if (index.books.length === before) throw new Error("找不到庫存表");
+      storageRemove(bookStateKey(target));
+      storageRemove(bookOriginalKey(target));
+      if (index.currentId === target) index.currentId = null;
+      saveBooksIndex(index);
+    },
+
+    switchTo: function (id) {
+      if (!findBookMeta(id)) throw new Error("找不到庫存表");
+      var index = loadBooksIndex();
+      index.currentId = id;
+      saveBooksIndex(index);
+      return findBookMeta(id);
+    },
+
+    summarize: function (id) {
+      var state = readBookState(id) || emptyState();
+      return catalogSummary(state.products);
+    }
+  };
+
+  Store.Books = Books;
   Inventory.Store = Store;
+  Inventory.Books = Books;
   global.Inventory = Inventory;
 })(typeof window !== "undefined" ? window : globalThis);

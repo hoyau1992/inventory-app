@@ -158,18 +158,84 @@
     sheet["!ref"] = XLSX.utils.encode_range(encoded);
   }
 
+  function looksLikeDescription(text, code) {
+    var value = String(text || "").trim();
+    if (!value || value === code) return false;
+    if (/\s/.test(value)) return true;
+    if (/[\u3400-\u9FFF]/.test(value)) return true;
+    return false;
+  }
+
+  function resolveProductHeader(matrix, code, fallbackDesc) {
+    var providedCode = String(code || "").trim();
+    var b1 = toText(cell(matrix, 0, 1));
+    var b2 = toText(cell(matrix, 1, 1));
+    var b3 = toText(cell(matrix, 2, 1));
+    var headerCode = providedCode || b2 || b1 || "";
+    var headerDesc = "";
+    if (providedCode) {
+      headerCode = providedCode;
+      if (b2 === providedCode) {
+        headerDesc = b3 || fallbackDesc || "";
+      } else if (b1 === providedCode && (looksLikeDescription(b2, providedCode) || !b3)) {
+        headerDesc = b2 || fallbackDesc || "";
+      } else {
+        headerDesc = b3 || fallbackDesc || (b2 && b2 !== providedCode ? b2 : "") || "";
+      }
+    } else {
+      headerDesc = b3 || fallbackDesc || "";
+    }
+    if (fallbackDesc && !headerDesc) headerDesc = fallbackDesc;
+    return { code: headerCode, description: headerDesc };
+  }
+
+  function rowHeaderValues(matrix, r) {
+    var row = matrix[r] || [];
+    var values = [];
+    for (var c = 0; c < row.length; c++) {
+      var text = toText(row[c]);
+      if (text) values.push(text);
+    }
+    return values;
+  }
+
+  function isLedgerHeaderRow(values) {
+    if (!values || !values.length) return false;
+    var joined = values.join(" ");
+    function has(token) {
+      if (values.indexOf(token) >= 0) return true;
+      return joined.indexOf(token) >= 0;
+    }
+    var hasOut = has("出庫") || has("出库");
+    var hasIn = has("入庫") || has("入库");
+    return hasOut && hasIn && has("日期") && has("片/箱");
+  }
+
+  function isProductLedgerSheet(workbook, name) {
+    var matrix = sheetMatrix(workbook, name);
+    if (!matrix || !matrix.length) return false;
+    if (isLedgerHeaderRow(rowHeaderValues(matrix, 7))) return true;
+    var limit = Math.min(matrix.length, 20);
+    for (var r = 0; r < limit; r++) {
+      if (isLedgerHeaderRow(rowHeaderValues(matrix, r))) return true;
+    }
+    return false;
+  }
+
   function parseProductSheet(workbook, code, fallbackDesc, issues) {
     var matrix = sheetMatrix(workbook, code);
+    var providedCode = String(code || "").trim();
     if (!matrix) {
       return {
-        code: code,
+        code: providedCode,
         description: fallbackDesc || "",
         inbound: [],
         outbound: []
       };
     }
-    var headerCode = toText(cell(matrix, 1, 1)) || code;
-    var headerDesc = toText(cell(matrix, 2, 1)) || fallbackDesc || "";
+    var header = resolveProductHeader(matrix, providedCode, fallbackDesc);
+    var headerCode = header.code;
+    var headerDesc = header.description;
     var totalRow = findTotalRow(matrix);
     var last = totalRow >= 0 ? totalRow : matrix.length;
     var inbound = [];
@@ -242,6 +308,7 @@
       var name = sheetNames[i];
       if (name === "總目錄" || name === "0") continue;
       if (seen[name]) continue;
+      if (!isProductLedgerSheet(workbook, name)) continue;
       seen[name] = true;
       products.push(parseProductSheet(workbook, name, "", issues));
     }
