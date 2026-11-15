@@ -5,6 +5,7 @@
   var BOOKS_INDEX_KEY = "inventory-app-books-v1";
   var BOOK_KEY_PREFIX = "inventory-app-v1::book::";
   var LEGACY_BOOK_ID = "book_legacy";
+  var SYNC_META_KEY = "inventory-app-sync-meta-v1";
   var Inventory = global.Inventory || {};
 
   function deepClone(value) {
@@ -508,11 +509,130 @@
     return totals.stockQty < 0 || totals.stockBoxes < 0;
   }
 
+
+  function defaultSyncMeta() {
+    return { localUpdatedAt: null, lastSyncedAt: null };
+  }
+
+  function readSyncMeta() {
+    var parsed = readJson(SYNC_META_KEY);
+    if (!parsed || typeof parsed !== "object") return defaultSyncMeta();
+    return {
+      localUpdatedAt: parsed.localUpdatedAt || null,
+      lastSyncedAt: parsed.lastSyncedAt || null
+    };
+  }
+
+  function writeSyncMeta(meta) {
+    var next = {
+      localUpdatedAt: meta && meta.localUpdatedAt ? String(meta.localUpdatedAt) : null,
+      lastSyncedAt: meta && meta.lastSyncedAt ? String(meta.lastSyncedAt) : null
+    };
+    storageSet(SYNC_META_KEY, JSON.stringify(next));
+    return next;
+  }
+
+  function touchLocalUpdatedAt() {
+    var meta = readSyncMeta();
+    meta.localUpdatedAt = new Date().toISOString();
+    return writeSyncMeta(meta);
+  }
+
+  function setLastSyncedAt(iso) {
+    var meta = readSyncMeta();
+    meta.lastSyncedAt = iso || new Date().toISOString();
+    return writeSyncMeta(meta);
+  }
+
+  function setSyncMeta(patch) {
+    var meta = readSyncMeta();
+    if (patch && Object.prototype.hasOwnProperty.call(patch, "localUpdatedAt")) {
+      meta.localUpdatedAt = patch.localUpdatedAt || null;
+    }
+    if (patch && Object.prototype.hasOwnProperty.call(patch, "lastSyncedAt")) {
+      meta.lastSyncedAt = patch.lastSyncedAt || null;
+    }
+    return writeSyncMeta(meta);
+  }
+
+  function hasUnsyncedLegacyData() {
+    if (storageGet(BOOKS_INDEX_KEY) != null) return false;
+    return !!readLegacyState();
+  }
+
+  function hasLocalBookData() {
+    var index = loadBooksIndex();
+    if (index.books && index.books.length > 0) return true;
+    return hasUnsyncedLegacyData();
+  }
+
+  function seedLocalUpdatedAtIfNeeded() {
+    var meta = readSyncMeta();
+    if (meta.localUpdatedAt) return meta;
+    if (hasLocalBookData()) {
+      meta.localUpdatedAt = new Date().toISOString();
+      return writeSyncMeta(meta);
+    }
+    return meta;
+  }
+
+  function exportAllBooks() {
+    var index = loadBooksIndex();
+    var meta = seedLocalUpdatedAtIfNeeded();
+    var books = (index.books || []).map(function (book) {
+      return {
+        id: book.id,
+        name: book.name,
+        createdAt: book.createdAt,
+        state: readBookState(book.id) || emptyState(),
+        original: readBookOriginal(book.id) || originalSnapshot(emptyState())
+      };
+    });
+    return {
+      version: 2,
+      updatedAt: meta.localUpdatedAt || new Date().toISOString(),
+      currentId: index.currentId || null,
+      books: books
+    };
+  }
+
+  function importAllBooks(payload) {
+    var src = payload && typeof payload === "object" ? payload : {};
+    var incoming = Array.isArray(src.books) ? src.books : [];
+    var old = loadBooksIndex();
+    var incomingIds = {};
+    var metas = [];
+    for (var i = 0; i < incoming.length; i++) {
+      var raw = incoming[i] || {};
+      var meta = normalizeBookMeta(raw);
+      if (!meta.id) continue;
+      incomingIds[meta.id] = true;
+      metas.push(meta);
+      writeBookState(meta.id, raw.state || emptyState());
+      writeBookOriginal(meta.id, raw.original || raw.state || emptyState());
+    }
+    for (var j = 0; j < (old.books || []).length; j++) {
+      var oldId = old.books[j].id;
+      if (!incomingIds[oldId]) {
+        storageRemove(bookStateKey(oldId));
+        storageRemove(bookOriginalKey(oldId));
+      }
+    }
+    saveBooksIndex({
+      version: 1,
+      currentId: src.currentId || null,
+      books: metas
+    });
+    return loadBooksIndex();
+  }
+
   var Store = {
     key: LEGACY_KEY,
     booksIndexKey: BOOKS_INDEX_KEY,
     bookStateKey: bookStateKey,
     bookOriginalKey: bookOriginalKey,
+    syncMetaKey: SYNC_META_KEY,
+    emptyState: emptyState,
     deepClone: deepClone,
     genId: genId,
     lineQty: lineQty,
@@ -523,6 +643,14 @@
     getOriginal: getOriginal,
     findProduct: findProduct,
     wouldBeNegative: wouldBeNegative,
+    hasLocalBookData: hasLocalBookData,
+    exportAllBooks: exportAllBooks,
+    importAllBooks: importAllBooks,
+    getSyncMeta: readSyncMeta,
+    setSyncMeta: setSyncMeta,
+    touchLocalUpdatedAt: touchLocalUpdatedAt,
+    setLastSyncedAt: setLastSyncedAt,
+    seedLocalUpdatedAtIfNeeded: seedLocalUpdatedAtIfNeeded,
 
     load: function () {
       loadBooksIndex();
@@ -534,6 +662,7 @@
     save: function (state) {
       var normalized = normalizeState(state);
       writeCurrentStorage(normalized);
+      touchLocalUpdatedAt();
       return normalized;
     },
 
@@ -546,17 +675,20 @@
       var original = readBookOriginal(id);
       var state = original ? normalizeState(original) : emptyState();
       writeBookState(id, state);
+      touchLocalUpdatedAt();
       return state;
     },
 
     replaceAll: function (data) {
       var state = normalizeState(data);
       writeCurrentStorage(state);
+      touchLocalUpdatedAt();
       return state;
     },
 
     saveOriginal: function (data) {
       writeBookOriginal(requireCurrentId(), data);
+      touchLocalUpdatedAt();
     },
 
     toBackup: function (state) {
@@ -817,6 +949,7 @@
       index.books.push(book);
       index.currentId = book.id;
       saveBooksIndex(index);
+      touchLocalUpdatedAt();
       return {
         id: book.id,
         name: book.name,
@@ -838,6 +971,7 @@
       }
       if (!found) throw new Error("找不到庫存表");
       saveBooksIndex(index);
+      touchLocalUpdatedAt();
       return findBookMeta(id);
     },
 
@@ -853,6 +987,7 @@
       storageRemove(bookOriginalKey(target));
       if (index.currentId === target) index.currentId = null;
       saveBooksIndex(index);
+      touchLocalUpdatedAt();
     },
 
     switchTo: function (id) {
@@ -860,6 +995,7 @@
       var index = loadBooksIndex();
       index.currentId = id;
       saveBooksIndex(index);
+      touchLocalUpdatedAt();
       return findBookMeta(id);
     },
 

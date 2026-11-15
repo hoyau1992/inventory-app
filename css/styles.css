@@ -670,6 +670,37 @@ table.data .neg { color: var(--danger); background: var(--danger-soft); }
 }
 .header-book-actions[hidden] { display: none !important; }
 
+.sync-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  color: rgba(255,255,255,0.86);
+  min-height: 32px;
+}
+.sync-status[hidden] { display: none !important; }
+.sync-account-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  line-height: 1.25;
+}
+.sync-status .sync-account,
+.sync-status .sync-note {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+}
+.sync-status .sync-account { color: #fff; }
+.sync-status .sync-email,
+.sync-status .sync-note {
+  color: rgba(255,255,255,0.72);
+  font-weight: 500;
+}
+.sync-status .sync-email { font-weight: 500; }
+
 .books-header {
   display: flex;
   align-items: flex-start;
@@ -750,6 +781,7 @@ table.data .neg { color: var(--danger); background: var(--danger-soft); }
   .books-grid { grid-template-columns: 1fr; }
   .metrics { grid-template-columns: 1fr 1fr; }
   .header-actions { width: 100%; justify-content: flex-start; }
+  .sync-status, .sync-account-wrap { align-items: flex-start; }
   .brand h1 { font-size: 16px; }
 }
 @media (max-width: 560px) {

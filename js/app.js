@@ -24,6 +24,7 @@
     history: document.getElementById("view-history"),
     brandSubtitle: document.getElementById("brand-subtitle"),
     headerBookActions: document.getElementById("header-book-actions"),
+    syncStatus: document.getElementById("sync-status"),
     modalRoot: document.getElementById("modal-root"),
     modal: document.getElementById("modal"),
     modalTitle: document.getElementById("modal-title"),
@@ -35,9 +36,87 @@
     fileJson: document.getElementById("file-json")
   };
 
+  function afterLocalChange() {
+    if (Inventory.Sync && typeof Inventory.Sync.schedulePush === "function") {
+      Inventory.Sync.schedulePush();
+    }
+  }
+
   function persist(next) {
     state = Store.save(next);
     render();
+    afterLocalChange();
+  }
+
+  function formatSyncTime(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return (
+      d.getFullYear() +
+      "/" +
+      String(d.getMonth() + 1).padStart(2, "0") +
+      "/" +
+      String(d.getDate()).padStart(2, "0") +
+      " " +
+      String(d.getHours()).padStart(2, "0") +
+      ":" +
+      String(d.getMinutes()).padStart(2, "0")
+    );
+  }
+
+  function syncStatusInfo() {
+    if (!Inventory.Sync || typeof Inventory.Sync.getStatus !== "function") return null;
+    return Inventory.Sync.getStatus();
+  }
+
+  function updateSyncStatus() {
+    if (!el.syncStatus) return;
+    var info = syncStatusInfo();
+    if (!info) {
+      el.syncStatus.hidden = true;
+      el.syncStatus.innerHTML = "";
+      return;
+    }
+    el.syncStatus.hidden = false;
+    if (!info.configured) {
+      el.syncStatus.innerHTML = '<p class="sync-note">尚未設定 OneDrive 同步</p>';
+      return;
+    }
+    if (info.syncing) {
+      var accountLine = "";
+      if (info.signedIn && info.account) {
+        accountLine =
+          '<p class="sync-account">' +
+          escapeHtml(info.account.name || info.account.email || "已登入") +
+          (info.account.name && info.account.email
+            ? ' <span class="sync-email">' + escapeHtml(info.account.email) + "</span>"
+            : "") +
+          "</p>";
+      }
+      el.syncStatus.innerHTML = accountLine + '<p class="sync-note">同步中…</p>';
+      return;
+    }
+    if (!info.signedIn) {
+      var hint = info.expectedOrigin
+        ? ""
+        : '<p class="sync-note">請在公開網站登入</p>';
+      el.syncStatus.innerHTML =
+        hint +
+        '<button type="button" class="btn btn-ghost" id="btn-onedrive-login">登入 OneDrive</button>';
+      return;
+    }
+    var name = (info.account && (info.account.name || info.account.email)) || "已登入";
+    var email = info.account && info.account.email && info.account.email !== name ? info.account.email : "";
+    var synced = formatSyncTime(info.lastSyncedAt);
+    el.syncStatus.innerHTML =
+      '<div class="sync-account-wrap"><p class="sync-account">' +
+      escapeHtml(name) +
+      (email ? ' <span class="sync-email">' + escapeHtml(email) + "</span>" : "") +
+      "</p>" +
+      (synced ? '<p class="sync-note">上次同步：' + escapeHtml(synced) + "</p>" : '<p class="sync-note">已登入 OneDrive</p>') +
+      "</div>" +
+      '<button type="button" class="btn btn-ghost" id="btn-onedrive-logout">登出</button>';
   }
 
   function toast(message, kind) {
@@ -973,14 +1052,17 @@
     var isBooks = view.name === "books";
     if (el.headerBookActions) el.headerBookActions.hidden = isBooks;
     if (!el.brandSubtitle) return;
+    var info = syncStatusInfo();
+    var storageHint = info && info.signedIn ? "資料會同步到 OneDrive" : "資料儲存在此瀏覽器";
     if (isBooks) {
-      el.brandSubtitle.textContent = "各份庫存表獨立存放 · 資料儲存在此瀏覽器";
+      el.brandSubtitle.textContent = "各份庫存表獨立存放 · " + storageHint;
     } else {
       var name = currentBookName();
       el.brandSubtitle.textContent = name
-        ? "目前：" + name + " · 資料儲存在此瀏覽器"
-        : "本地運作 · 資料自動儲存在此瀏覽器";
+        ? "目前：" + name + " · " + storageHint
+        : "本地運作 · " + storageHint;
     }
+    updateSyncStatus();
   }
 
   function loadCurrentBookState() {
@@ -999,6 +1081,7 @@
     loadCurrentBookState();
     view = { name: "catalog", code: null };
     render();
+    afterLocalChange();
   }
 
   function showBooksPicker() {
@@ -1648,6 +1731,7 @@
           loadCurrentBookState();
           view = { name: "catalog", code: null };
           render();
+          afterLocalChange();
           toast("已新增「" + book.name + "」，可按「匯入 Excel」匯入此表");
         } catch (err) {
           toast(err.message || String(err), "error");
@@ -1670,6 +1754,7 @@
           Books.rename(id, name);
           closeModal();
           render();
+          afterLocalChange();
           toast("已重新命名");
         } catch (err) {
           toast(err.message || String(err), "error");
@@ -1690,6 +1775,7 @@
       clearLedgerSelection();
       view = { name: "books", code: null, archiveId: null };
       render();
+      afterLocalChange();
       toast("已刪除「" + book.name + "」");
     } catch (err) {
       toast(err.message || String(err), "error");
@@ -1936,11 +2022,59 @@
     }
   });
 
-  var params = new URLSearchParams(window.location.search || "");
-  var initialItem = params.get("item");
-  if (initialItem && Store.findProduct(state, initialItem)) {
-    view = { name: "product", code: initialItem };
+  function applyInitialRoute() {
+    var params = new URLSearchParams(window.location.search || "");
+    var initialItem = params.get("item");
+    if (initialItem && Store.findProduct(state, initialItem)) {
+      view = { name: "product", code: initialItem };
+    }
   }
 
-  render();
+  function reloadAfterCloud() {
+    state = Store.load();
+    var current = Books.getCurrent();
+    if (view.name !== "books" && !current) {
+      view = { name: "books", code: null, archiveId: null };
+    } else if (view.name === "product" && !Store.findProduct(state, view.code)) {
+      view = { name: "catalog", code: null };
+    } else if (view.name === "history" && view.archiveId && !Store.findArchive(state, view.archiveId)) {
+      view = { name: "history", code: null, archiveId: null };
+    }
+    render();
+  }
+
+  if (el.syncStatus) {
+    el.syncStatus.addEventListener("click", function (ev) {
+      if (ev.target.closest("#btn-onedrive-login")) {
+        if (Inventory.Sync) Inventory.Sync.signIn();
+        return;
+      }
+      if (ev.target.closest("#btn-onedrive-logout")) {
+        if (Inventory.Sync) Inventory.Sync.signOut();
+      }
+    });
+  }
+
+  function boot() {
+    var start = Inventory.Sync && Inventory.Sync.boot
+      ? Inventory.Sync.boot({
+          onStatus: function () {
+            updateSyncStatus();
+            if (el.brandSubtitle) updateHeaderChrome();
+          },
+          onToast: toast,
+          onDataReloaded: reloadAfterCloud
+        })
+      : Promise.resolve();
+    Promise.resolve(start)
+      .catch(function (err) {
+        toast((err && err.message) || "無法啟動 OneDrive 同步", "error");
+      })
+      .then(function () {
+        applyInitialRoute();
+        render();
+      });
+  }
+
+  boot();
 })();
