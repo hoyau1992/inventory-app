@@ -26,8 +26,8 @@
       </div>
       <div class="header-actions">
         <div class="sync-status" id="sync-status"></div>
-        <button type="button" class="btn btn-ghost" id="btn-books">庫存表</button>
-        <div class="header-book-actions" id="header-book-actions">
+        <button type="button" class="btn btn-ghost" id="btn-books" hidden>庫存表</button>
+        <div class="header-book-actions" id="header-book-actions" hidden>
         <button type="button" class="btn btn-ghost" id="btn-import-excel">匯入 Excel</button>
         <button type="button" class="btn btn-ghost" id="btn-export-excel">匯出 Excel</button>
         <button type="button" class="btn btn-ghost" id="btn-export-stocktake">匯出盤點表</button>
@@ -41,8 +41,14 @@
     </header>
 
     <main class="app-main">
-      <section id="view-login" class="view" hidden></section>
-      <section id="view-books" class="view"></section>
+      <section id="view-login" class="view">
+        <div class="login-gate">
+          <h2>請先登入</h2>
+          <p class="help">此程式只供智祥運通有限公司的 Microsoft 帳戶使用。登入後先見到庫存功能，資料會同步到你的 OneDrive。</p>
+          <button type="button" class="btn btn-primary" id="btn-login-main">登入 Microsoft</button>
+        </div>
+      </section>
+      <section id="view-books" class="view" hidden></section>
       <section id="view-catalog" class="view" hidden></section>
       <section id="view-product" class="view" hidden></section>
       <section id="view-history" class="view" hidden></section>

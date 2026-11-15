@@ -1058,6 +1058,13 @@
     return !!info.signedIn;
   }
 
+  function requireUnlock() {
+    if (isAppUnlocked()) return true;
+    render();
+    toast("請先登入後再使用", "error");
+    return false;
+  }
+
   function renderLogin() {
     if (!el.login) return;
     var info = syncStatusInfo() || {};
@@ -1809,9 +1816,11 @@
   }
 
   document.getElementById("btn-books").addEventListener("click", function () {
+    if (!requireUnlock()) return;
     showBooksPicker();
   });
   document.getElementById("btn-import-excel").addEventListener("click", function () {
+    if (!requireUnlock()) return;
     if (!Books.getCurrent()) {
       toast("請先打開或新增庫存表", "error");
       return;
@@ -1820,20 +1829,23 @@
     el.fileExcel.value = "";
     el.fileExcel.click();
   });
-  document.getElementById("btn-export-excel").addEventListener("click", exportExcel);
-  document.getElementById("btn-export-stocktake").addEventListener("click", exportStocktake);
-  document.getElementById("btn-archive-period").addEventListener("click", openArchiveModal);
+  document.getElementById("btn-export-excel").addEventListener("click", function () { if (!requireUnlock()) return; exportExcel(); });
+  document.getElementById("btn-export-stocktake").addEventListener("click", function () { if (!requireUnlock()) return; exportStocktake(); });
+  document.getElementById("btn-archive-period").addEventListener("click", function () { if (!requireUnlock()) return; openArchiveModal(); });
   document.getElementById("btn-history").addEventListener("click", function () {
+    if (!requireUnlock()) return;
     view = { name: "history", code: null, archiveId: null };
     render();
   });
-  document.getElementById("btn-backup-json").addEventListener("click", backupJson);
+  document.getElementById("btn-backup-json").addEventListener("click", function () { if (!requireUnlock()) return; backupJson(); });
   document.getElementById("btn-restore-json").addEventListener("click", function () {
+    if (!requireUnlock()) return;
     if (!confirmAction("還原 JSON 會取代目前資料，包括過往紀錄。確定繼續？")) return;
     el.fileJson.value = "";
     el.fileJson.click();
   });
   document.getElementById("btn-reset").addEventListener("click", function () {
+    if (!requireUnlock()) return;
     if (!confirmAction("將會清除本機所有修改，恢復為首次匯入的原始資料。已封存的過往紀錄會保留。確定？")) return;
     var keptArchives = Store.deepClone(state.archives || []);
     var reset = Store.resetToOriginal();
@@ -1844,9 +1856,11 @@
     toast("已重置為原始匯入資料");
   });
   el.fileExcel.addEventListener("change", function () {
+    if (!requireUnlock()) { el.fileExcel.value = ""; return; }
     if (el.fileExcel.files[0]) importExcelFile(el.fileExcel.files[0]);
   });
   el.fileJson.addEventListener("change", function () {
+    if (!requireUnlock()) { el.fileJson.value = ""; return; }
     if (el.fileJson.files[0]) restoreJsonFile(el.fileJson.files[0]);
   });
   el.modalClose.addEventListener("click", closeModal);
