@@ -208,7 +208,7 @@
     el.modalRoot.hidden = true;
     el.modalBody.innerHTML = "";
     el.modalFooter.innerHTML = "";
-    el.modal.classList.remove("wide");
+    el.modal.classList.remove("wide", "preview");
   }
 
   function openModal(opts) {
@@ -216,6 +216,7 @@
     el.modalBody.innerHTML = opts.body || "";
     el.modalFooter.innerHTML = "";
     el.modal.classList.toggle("wide", !!opts.wide);
+    el.modal.classList.toggle("preview", !!opts.preview);
     (opts.buttons || []).forEach(function (btn) {
       var button = document.createElement("button");
       button.type = "button";
@@ -1539,18 +1540,106 @@
     }
   }
 
-  function exportStocktake() {
+  function stocktakePreviewData() {
+    var products = (state && state.products) || [];
+    var rows = [];
+    var totalBoxes = 0;
+    var totalQty = 0;
+    for (var i = 0; i < products.length; i++) {
+      var product = products[i];
+      var totals = Store.productTotals(product);
+      rows.push({
+        code: product.code || "",
+        description: product.description || "",
+        stockBoxes: totals.stockBoxes,
+        stockQty: totals.stockQty
+      });
+      totalBoxes += totals.stockBoxes;
+      totalQty += totals.stockQty;
+    }
+    return { rows: rows, totalBoxes: totalBoxes, totalQty: totalQty };
+  }
+
+  function openStocktakePreview() {
+    var preview = stocktakePreviewData();
+    var today = todayInputDate();
+    var body =
+      '<form id="stocktake-preview-form" class="preview-toolbar">' +
+      '<div class="field"><label>當日列印日期</label><input type="date" name="printDate" value="' +
+      escapeHtml(today) +
+      '" required /></div>' +
+      '<p class="help">以下為即將匯出嘅全部貨品，包括現存為 0 的項目。請先核對，確認後再下載 Excel。</p>' +
+      "</form>" +
+      '<div class="preview-table-wrap"><table class="data preview-table"><thead><tr>' +
+      "<th>貨品編號</th><th>說明</th><th class=\"num\">現存箱數</th><th class=\"num\">現存數量</th>" +
+      "</tr></thead><tbody>" +
+      (preview.rows.length
+        ? preview.rows
+            .map(function (row) {
+              var zero = row.stockQty === 0 && row.stockBoxes === 0 ? " zero" : "";
+              var stockCls = row.stockQty < 0 || row.stockBoxes < 0 ? " neg" : " stock-col";
+              return (
+                '<tr class="' +
+                zero +
+                '"><td class="code">' +
+                escapeHtml(row.code) +
+                '</td><td class="desc">' +
+                escapeHtml(row.description) +
+                '</td><td class="num' +
+                stockCls +
+                '">' +
+                formatNumber(row.stockBoxes) +
+                '</td><td class="num' +
+                stockCls +
+                '">' +
+                formatNumber(row.stockQty) +
+                "</td></tr>"
+              );
+            })
+            .join("")
+        : '<tr><td colspan="4">目前沒有貨品。</td></tr>') +
+      "</tbody><tfoot><tr><td></td><td>合計</td><td class=\"num\">" +
+      formatNumber(preview.totalBoxes) +
+      '</td><td class="num">' +
+      formatNumber(preview.totalQty) +
+      "</td></tr></tfoot></table></div>";
+
+    openModal({
+      title: "預覽盤點表",
+      wide: true,
+      preview: true,
+      body: body,
+      buttons: [
+        { label: "取消", className: "btn-light", onClick: closeModal },
+        {
+          label: "下載 Excel",
+          className: "btn-primary",
+          onClick: downloadStocktakeExcel
+        }
+      ]
+    });
+  }
+
+  function downloadStocktakeExcel() {
     try {
-      var bytes = Excel.exportStocktakeWorkbook(state);
-      var today = todayInputDate().replace(/-/g, "");
+      var form = document.getElementById("stocktake-preview-form");
+      var raw = form && form.printDate ? form.printDate.value : todayInputDate();
+      var printDate = inputToDate(raw) || formatDate(todayInputDate());
+      var bytes = Excel.exportStocktakeWorkbook(state, printDate);
+      var fileStamp = String(printDate).replace(/[/\-]/g, "");
       downloadBlob(
-        "盤點表-" + today + ".xlsx",
+        "盤點表-" + fileStamp + ".xlsx",
         new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
       );
+      closeModal();
       toast("已匯出盤點表");
     } catch (err) {
       toast(err.message || String(err), "error");
     }
+  }
+
+  function exportStocktake() {
+    openStocktakePreview();
   }
 
   function exportArchiveExcel(archiveId) {

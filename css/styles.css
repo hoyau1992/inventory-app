@@ -584,6 +584,41 @@ table.data .neg { color: var(--danger); background: var(--danger-soft); }
   border: 1px solid rgba(255,255,255,0.4);
 }
 .modal.wide { width: min(760px, 100%); }
+.modal.wide.preview { width: min(900px, 100%); }
+.modal.preview .modal-body { padding-top: 14px; }
+.preview-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.preview-toolbar .field { margin: 0; min-width: 200px; }
+.preview-toolbar .help { margin: 0; flex: 1; min-width: 220px; }
+.preview-table-wrap {
+  max-height: min(58vh, 640px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.preview-table { margin: 0; }
+.preview-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-shadow: 0 1px 0 var(--line);
+}
+.preview-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: #f6f8fb;
+  font-weight: 700;
+  box-shadow: 0 -1px 0 var(--line);
+}
+.preview-table tbody tr { cursor: default; }
 .modal-header, .modal-footer {
   padding: 14px 16px;
   display: flex;
