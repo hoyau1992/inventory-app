@@ -1548,6 +1548,7 @@
     for (var i = 0; i < products.length; i++) {
       var product = products[i];
       var totals = Store.productTotals(product);
+      if (totals.stockBoxes === 0 && totals.stockQty === 0) continue;
       rows.push({
         code: product.code || "",
         description: product.description || "",
@@ -1568,7 +1569,7 @@
       '<div class="field"><label>當日列印日期</label><input type="date" name="printDate" value="' +
       escapeHtml(today) +
       '" required /></div>' +
-      '<p class="help">以下為即將匯出嘅全部貨品，包括現存為 0 的項目。請先核對，確認後再下載 Excel。</p>' +
+      '<p class="help">只列出仍有庫存嘅貨品（現存數量或箱數不是 0）。現存為 0 的項目已略過，唔使再盤點。</p>' +
       "</form>" +
       '<div class="preview-table-wrap"><table class="data preview-table"><thead><tr>' +
       "<th>貨品編號</th><th>說明</th><th class=\"num\">現存箱數</th><th class=\"num\">現存數量</th>" +
@@ -1597,7 +1598,7 @@
               );
             })
             .join("")
-        : '<tr><td colspan="4">目前沒有貨品。</td></tr>') +
+        : '<tr><td colspan="4">目前沒有需要盤點的貨品。</td></tr>') +
       "</tbody><tfoot><tr><td></td><td>合計</td><td class=\"num\">" +
       formatNumber(preview.totalBoxes) +
       '</td><td class="num">' +

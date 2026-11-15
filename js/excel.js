@@ -518,21 +518,24 @@
     var row = 5;
     var totalBoxes = 0;
     var totalQty = 0;
+    var listed = 0;
     products.forEach(function (product) {
       var totals = Inventory.Store.productTotals(product);
+      if (totals.stockBoxes === 0 && totals.stockQty === 0) return;
       addCell(sheet, "A" + row, product.code || "");
       addCell(sheet, "B" + row, product.description || "");
       addCell(sheet, "C" + row, totals.stockBoxes);
       addCell(sheet, "D" + row, totals.stockQty);
       totalBoxes += totals.stockBoxes;
       totalQty += totals.stockQty;
+      listed += 1;
       row += 1;
     });
 
     var lastData = row - 1;
-    var totalRow = products.length ? row : 5;
+    var totalRow = listed ? row : 5;
     addCell(sheet, "B" + totalRow, "合計");
-    if (products.length) {
+    if (listed) {
       addCell(sheet, "C" + totalRow, null, { formula: "SUM(C5:C" + lastData + ")", v: totalBoxes });
       addCell(sheet, "D" + totalRow, null, { formula: "SUM(D5:D" + lastData + ")", v: totalQty });
     } else {
