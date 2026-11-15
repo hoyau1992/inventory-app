@@ -15,7 +15,7 @@
 
 ## OneDrive 同步
 
-在這個公開 HTTPS 網站按「登入 OneDrive」，用你的 Microsoft 帳戶登入後，各份庫存表會一齊同步到你的 OneDrive，換電腦或手機打開同一網址並登入同一個帳戶即可共用。請不要用 `file://` 本機檔案開啟來登入。
+必須先在這個公開 HTTPS 網站按「登入 Microsoft」，並且使用智祥運通有限公司的 Microsoft 帳戶；未登入時看不到庫存功能。登入後，各份庫存表會同步到該帳戶的 OneDrive，換電腦或手機打開同一網址並以同一個公司帳戶登入即可共用。其他公司或個人 Microsoft 帳戶無法登入。請不要用 `file://` 本機檔案開啟來登入。
 
 - 資料會放在你的 OneDrive 資料夾 `Apps/庫存管理系統`（實際資料夾名稱會跟隨 Entra 應用程式顯示名稱）。
 - 程式只申請該應用程式資料夾的權限（`Files.ReadWrite.AppFolder`），不會讀寫你整個 OneDrive。
