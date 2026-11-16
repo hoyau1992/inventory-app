@@ -999,6 +999,42 @@
       return findBookMeta(id);
     },
 
+    reorder: function (ids) {
+      var index = loadBooksIndex();
+      var existing = index.books.slice();
+      var byId = {};
+      var i;
+      for (i = 0; i < existing.length; i++) {
+        byId[existing[i].id] = existing[i];
+      }
+      var seen = {};
+      var next = [];
+      var raw = Array.isArray(ids) ? ids : [];
+      for (i = 0; i < raw.length; i++) {
+        var id = String(raw[i] || "");
+        if (!id || seen[id] || !byId[id]) continue;
+        seen[id] = true;
+        next.push(byId[id]);
+      }
+      for (i = 0; i < existing.length; i++) {
+        if (!seen[existing[i].id]) next.push(existing[i]);
+      }
+      var unchanged = next.length === existing.length;
+      if (unchanged) {
+        for (i = 0; i < next.length; i++) {
+          if (next[i].id !== existing[i].id) {
+            unchanged = false;
+            break;
+          }
+        }
+      }
+      if (unchanged) return Books.list();
+      index.books = next;
+      saveBooksIndex(index);
+      touchLocalUpdatedAt();
+      return Books.list();
+    },
+
     summarize: function (id) {
       var state = readBookState(id) || emptyState();
       return catalogSummary(state.products);

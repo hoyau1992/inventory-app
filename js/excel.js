@@ -498,6 +498,148 @@
     return formatYmd(d.getFullYear(), d.getMonth() + 1, d.getDate());
   }
 
+  function requireFflate() {
+    if (!global.fflate || typeof global.fflate.unzipSync !== "function" || typeof global.fflate.zipSync !== "function") {
+      throw new Error("找不到壓縮元件（fflate）");
+    }
+    return global.fflate;
+  }
+
+  function bytesToString(bytes) {
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+
+  function stringToBytes(text) {
+    return new TextEncoder().encode(text);
+  }
+
+  function addThinBlackBorderStyle(stylesXml) {
+    var bordersMatch = stylesXml.match(/<borders count="(\d+)">/);
+    if (!bordersMatch) throw new Error("盤點表樣式缺少框線定義");
+    var borderId = parseInt(bordersMatch[1], 10);
+    stylesXml = stylesXml.replace(/<borders count="\d+">/, '<borders count="' + (borderId + 1) + '">');
+    stylesXml = stylesXml.replace(
+      "</borders>",
+      '<border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border></borders>'
+    );
+    var xfMatch = stylesXml.match(/<cellXfs count="(\d+)">/);
+    if (!xfMatch) throw new Error("盤點表樣式缺少儲存格格式");
+    var styleId = parseInt(xfMatch[1], 10);
+    stylesXml = stylesXml.replace(/<cellXfs count="\d+">/, '<cellXfs count="' + (styleId + 1) + '">');
+    stylesXml = stylesXml.replace(
+      "</cellXfs>",
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="' + borderId + '" xfId="0" applyBorder="1"/></cellXfs>'
+    );
+    return { xml: stylesXml, styleId: styleId };
+  }
+
+  function colIndexToLetter(index) {
+    var n = index;
+    var out = "";
+    while (n > 0) {
+      var rem = (n - 1) % 26;
+      out = String.fromCharCode(65 + rem) + out;
+      n = Math.floor((n - 1) / 26);
+    }
+    return out;
+  }
+
+  function letterToColIndex(letter) {
+    var text = String(letter || "").toUpperCase();
+    var n = 0;
+    for (var i = 0; i < text.length; i++) {
+      n = n * 26 + (text.charCodeAt(i) - 64);
+    }
+    return n;
+  }
+
+  function cellRefParts(ref) {
+    var match = String(ref || "").match(/^([A-Z]+)(\d+)$/i);
+    if (!match) return null;
+    return { col: letterToColIndex(match[1]), row: parseInt(match[2], 10), letter: match[1].toUpperCase() };
+  }
+
+  function applyStyleToCellOpenTag(openTag, styleId) {
+    if (/\ss="\d+"/.test(openTag)) return openTag.replace(/\ss="\d+"/, ' s="' + styleId + '"');
+    return openTag.replace(/^(<c r="[^"]+")/, '$1 s="' + styleId + '"');
+  }
+
+  function applyThinBlackBordersToSheet(sheetXml, startRow, endRow, startCol, endCol, styleId) {
+    function patchRow(full, rowNum, attrs, inner) {
+      var r = parseInt(rowNum, 10);
+      if (r < startRow || r > endRow) return full;
+      var cells = {};
+      var order = [];
+      inner.replace(/<c\b([^>]*)\/>|<c\b([^>]*)>([\s\S]*?)<\/c>/g, function (cellXml) {
+        var refMatch = cellXml.match(/\br="([A-Z]+\d+)"/i);
+        if (!refMatch) return cellXml;
+        var parts = cellRefParts(refMatch[1]);
+        if (!parts) return cellXml;
+        cells[parts.col] = cellXml;
+        order.push(parts.col);
+        return cellXml;
+      });
+      var nextInner = "";
+      var col;
+      for (col = startCol; col <= endCol; col++) {
+        var xml = cells[col];
+        if (xml) {
+          xml = xml.replace(/<c r="[^"]+"[^>]*\/?>/, function (open) {
+            var ending = open.charAt(open.length - 2) === "/" && open.charAt(open.length - 1) === ">" ? "/>" : ">";
+            var core = ending === "/>" ? open.slice(0, -2) : open.slice(0, -1);
+            return applyStyleToCellOpenTag(core, styleId) + ending;
+          });
+        } else {
+          xml = '<c r="' + colIndexToLetter(col) + r + '" s="' + styleId + '"/>';
+        }
+        nextInner += xml;
+        delete cells[col];
+      }
+      for (var i = 0; i < order.length; i++) {
+        if (cells[order[i]]) {
+          nextInner += cells[order[i]];
+          delete cells[order[i]];
+        }
+      }
+      return "<row r=\"" + rowNum + "\"" + attrs + ">" + nextInner + "</row>";
+    }
+
+    if (!/<sheetData[\s>]/.test(sheetXml)) throw new Error("盤點表工作表格式不正確");
+    var seen = {};
+    sheetXml = sheetXml.replace(/<row r="(\d+)"([^>]*)>([\s\S]*?)<\/row>/g, function (full, rowNum, attrs, inner) {
+      seen[rowNum] = true;
+      return patchRow(full, rowNum, attrs, inner);
+    });
+    var missing = "";
+    for (var r = startRow; r <= endRow; r++) {
+      if (!seen[String(r)]) {
+        missing += patchRow("", String(r), "", "");
+      }
+    }
+    if (missing) {
+      sheetXml = sheetXml.replace("</sheetData>", missing + "</sheetData>");
+    }
+    return sheetXml;
+  }
+
+  function applyStocktakeTableBorders(buffer, totalRow) {
+    var fflate = requireFflate();
+    var input = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    var files = fflate.unzipSync(input);
+    var stylesName = "xl/styles.xml";
+    var sheetName = "xl/worksheets/sheet1.xml";
+    if (!files[stylesName] || !files[sheetName]) {
+      throw new Error("盤點表檔案格式不正確");
+    }
+    var styled = addThinBlackBorderStyle(bytesToString(files[stylesName]));
+    files[stylesName] = stringToBytes(styled.xml);
+    files[sheetName] = stringToBytes(
+      applyThinBlackBordersToSheet(bytesToString(files[sheetName]), 4, totalRow, 1, 4, styled.styleId)
+    );
+    var output = fflate.zipSync(files);
+    return output.buffer.slice(output.byteOffset, output.byteOffset + output.byteLength);
+  }
+
   function exportStocktakeWorkbook(state, printDate) {
     var XLSX = requireXLSX();
     if (!Inventory.Store) throw new Error("找不到庫存資料元件");
@@ -550,7 +692,8 @@
     sheet["!printHeader"] = ["A1:D4"];
     extendRange(sheet, "D" + totalRow);
     XLSX.utils.book_append_sheet(workbook, sheet, "盤點表");
-    return XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    var bytes = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    return applyStocktakeTableBorders(bytes, totalRow);
   }
 
   Inventory.Excel = {

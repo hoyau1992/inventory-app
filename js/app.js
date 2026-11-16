@@ -1185,6 +1185,10 @@
           '" data-book-id="' +
           escapeHtml(book.id) +
           '">' +
+          '<div class="book-card-main">' +
+          '<button type="button" class="book-drag-handle" data-book-drag="' +
+          escapeHtml(book.id) +
+          '" aria-label="拖動以調整排列次序" title="拖動以調整排列次序"><span aria-hidden="true">⋮⋮</span></button>' +
           "<div><h3>" +
           escapeHtml(book.name) +
           (isCurrent ? '<span class="book-current-tag">目前</span>' : "") +
@@ -1196,7 +1200,7 @@
           formatNumber(summary.stockQty) +
           "</strong>　現存箱數 <strong>" +
           formatNumber(summary.stockBoxes) +
-          "</strong></p></div>" +
+          "</strong></p></div></div>" +
           '<div class="book-card-actions">' +
           '<button type="button" class="btn btn-primary" data-open-book="' +
           escapeHtml(book.id) +
@@ -1214,13 +1218,225 @@
 
     el.books.innerHTML =
       '<div class="books-header">' +
-      '<div><h2>庫存表</h2><p class="help">每份庫存表獨立存放，匯入同操作都唔會同其他表混合。打開後即可匯入 Excel、出入庫同盤點。</p></div>' +
+      '<div><h2>庫存表</h2><p class="help">每份庫存表獨立存放，匯入同操作都唔會同其他表混合。可拖動卡片左側標記，自由更換排列次序。打開後即可匯入 Excel、出入庫同盤點。</p></div>' +
       '<button type="button" class="btn btn-primary" id="btn-add-book">新增庫存表</button>' +
       "</div>" +
       (books.length
         ? '<div class="books-grid">' + cards + "</div>"
         : '<div class="empty-state books-empty"><p>尚未有庫存表。請先新增一份，再按「匯入 Excel」。</p>' +
           '<button type="button" class="btn btn-primary" id="btn-add-book-empty">新增庫存表</button></div>');
+  }
+
+
+  var bookDrag = null;
+  var bookDragSuppressClick = false;
+  var BOOK_DRAG_THRESHOLD = 8;
+
+  function bookCardIdsFromGrid(grid, draggedId) {
+    var ids = [];
+    var nodes = grid ? grid.children : [];
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      if (node.classList.contains("is-dragging")) continue;
+      if (node.classList.contains("book-card-placeholder")) {
+        if (draggedId) ids.push(draggedId);
+        continue;
+      }
+      if (node.classList.contains("book-card")) {
+        var id = node.getAttribute("data-book-id");
+        if (id) ids.push(id);
+      }
+    }
+    return ids;
+  }
+
+  function sameIdList(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  function moveBookPlaceholder(x, y) {
+    if (!bookDrag || !bookDrag.placeholder || !bookDrag.grid) return;
+    var grid = bookDrag.grid;
+    var placeholder = bookDrag.placeholder;
+    var cards = [];
+    var nodes = grid.children;
+    var i;
+    for (i = 0; i < nodes.length; i++) {
+      if (nodes[i].classList.contains("book-card") && !nodes[i].classList.contains("is-dragging")) {
+        cards.push(nodes[i]);
+      }
+    }
+    var insertBefore = null;
+    for (i = 0; i < cards.length; i++) {
+      var rect = cards[i].getBoundingClientRect();
+      var midX = rect.left + rect.width / 2;
+      var midY = rect.top + rect.height / 2;
+      var sameRow = y >= rect.top && y <= rect.bottom;
+      if (sameRow) {
+        if (x < midX) {
+          insertBefore = cards[i];
+          break;
+        }
+      } else if (y < midY) {
+        insertBefore = cards[i];
+        break;
+      }
+    }
+    if (insertBefore) {
+      if (placeholder.nextSibling !== insertBefore) grid.insertBefore(placeholder, insertBefore);
+    } else if (grid.lastChild !== placeholder) {
+      grid.appendChild(placeholder);
+    }
+  }
+
+  function startBookDrag() {
+    if (!bookDrag || bookDrag.started) return;
+    var card = bookDrag.card;
+    var grid = bookDrag.grid;
+    var rect = card.getBoundingClientRect();
+    bookDrag.started = true;
+    bookDrag.offsetX = bookDrag.startX - rect.left;
+    bookDrag.offsetY = bookDrag.startY - rect.top;
+    bookDrag.originIds = bookCardIdsFromGrid(grid, null);
+    var placeholder = document.createElement("div");
+    placeholder.className = "book-card-placeholder";
+    placeholder.style.height = rect.height + "px";
+    placeholder.setAttribute("aria-hidden", "true");
+    grid.insertBefore(placeholder, card);
+    bookDrag.placeholder = placeholder;
+    card.classList.add("is-dragging");
+    card.style.width = rect.width + "px";
+    card.style.height = rect.height + "px";
+    card.style.position = "fixed";
+    card.style.left = rect.left + "px";
+    card.style.top = rect.top + "px";
+    card.style.zIndex = "200";
+    card.style.margin = "0";
+    card.style.pointerEvents = "none";
+    document.body.classList.add("is-reordering-books");
+    moveBookPlaceholder(bookDrag.startX, bookDrag.startY);
+  }
+
+  function positionDraggingCard(x, y) {
+    if (!bookDrag || !bookDrag.started || !bookDrag.card) return;
+    bookDrag.card.style.left = x - bookDrag.offsetX + "px";
+    bookDrag.card.style.top = y - bookDrag.offsetY + "px";
+  }
+
+  function cleanupBookDrag() {
+    if (!bookDrag) return;
+    var drag = bookDrag;
+    var card = drag.card;
+    if (drag.moveListener) drag.source.removeEventListener("pointermove", drag.moveListener);
+    if (drag.upListener) drag.source.removeEventListener("pointerup", drag.upListener);
+    if (drag.cancelListener) drag.source.removeEventListener("pointercancel", drag.cancelListener);
+    if (drag.captured && drag.source && typeof drag.source.releasePointerCapture === "function") {
+      try { drag.source.releasePointerCapture(drag.pointerId); } catch (err) {}
+    }
+    if (drag.placeholder && drag.placeholder.parentNode) {
+      drag.placeholder.parentNode.removeChild(drag.placeholder);
+    }
+    if (card) {
+      card.classList.remove("is-dragging");
+      card.style.width = "";
+      card.style.height = "";
+      card.style.position = "";
+      card.style.left = "";
+      card.style.top = "";
+      card.style.zIndex = "";
+      card.style.margin = "";
+      card.style.pointerEvents = "";
+    }
+    document.body.classList.remove("is-reordering-books");
+    bookDrag = null;
+  }
+
+  function finishBookDrag(commit) {
+    if (!bookDrag) return;
+    var drag = bookDrag;
+    var started = drag.started;
+    var grid = drag.grid;
+    var draggedId = drag.bookId;
+    var nextIds = started ? bookCardIdsFromGrid(grid, draggedId) : null;
+    var changed = started && commit && nextIds && !sameIdList(drag.originIds, nextIds);
+    var suppressClick = started;
+    cleanupBookDrag();
+    if (suppressClick) bookDragSuppressClick = true;
+    if (!changed) return;
+    try {
+      Books.reorder(nextIds);
+      render();
+      afterLocalChange();
+    } catch (err) {
+      toast(err.message || String(err), "error");
+      render();
+    }
+  }
+
+  function onBookPointerMove(ev) {
+    if (!bookDrag || ev.pointerId !== bookDrag.pointerId) return;
+    var dx = ev.clientX - bookDrag.startX;
+    var dy = ev.clientY - bookDrag.startY;
+    if (!bookDrag.started) {
+      if (dx * dx + dy * dy < BOOK_DRAG_THRESHOLD * BOOK_DRAG_THRESHOLD) return;
+      startBookDrag();
+    }
+    ev.preventDefault();
+    positionDraggingCard(ev.clientX, ev.clientY);
+    moveBookPlaceholder(ev.clientX, ev.clientY);
+  }
+
+  function onBookPointerUp(ev) {
+    if (!bookDrag || ev.pointerId !== bookDrag.pointerId) return;
+    finishBookDrag(true);
+  }
+
+  function onBookPointerCancel(ev) {
+    if (!bookDrag || ev.pointerId !== bookDrag.pointerId) return;
+    finishBookDrag(false);
+  }
+
+  function onBookPointerDown(ev) {
+    if (ev.button != null && ev.button !== 0) return;
+    var handle = ev.target.closest("[data-book-drag]");
+    if (!handle || !el.books.contains(handle)) return;
+    if (ev.target.closest(".book-card-actions")) return;
+    var card = handle.closest(".book-card");
+    var grid = handle.closest(".books-grid");
+    if (!card || !grid) return;
+    ev.preventDefault();
+    bookDrag = {
+      pointerId: ev.pointerId,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      offsetX: 0,
+      offsetY: 0,
+      card: card,
+      grid: grid,
+      source: handle,
+      bookId: card.getAttribute("data-book-id"),
+      started: false,
+      captured: false,
+      placeholder: null,
+      originIds: null,
+      suppressClick: false,
+      moveListener: onBookPointerMove,
+      upListener: onBookPointerUp,
+      cancelListener: onBookPointerCancel
+    };
+    handle.addEventListener("pointermove", onBookPointerMove);
+    handle.addEventListener("pointerup", onBookPointerUp);
+    handle.addEventListener("pointercancel", onBookPointerCancel);
+    if (typeof handle.setPointerCapture === "function") {
+      try {
+        handle.setPointerCapture(ev.pointerId);
+        bookDrag.captured = true;
+      } catch (err) {}
+    }
   }
 
   function render() {
@@ -1934,7 +2150,14 @@
     }
   }
 
+  el.books.addEventListener("pointerdown", onBookPointerDown);
   el.books.addEventListener("click", function (ev) {
+    if (bookDragSuppressClick) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      bookDragSuppressClick = false;
+      return;
+    }
     if (ev.target.closest("#btn-add-book") || ev.target.closest("#btn-add-book-empty")) {
       promptNewBook();
       return;
