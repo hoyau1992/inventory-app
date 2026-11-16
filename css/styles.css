@@ -886,7 +886,28 @@ body.is-reordering-books {
     margin-bottom: 20px;
     padding-top: 16px;
   }
-  .summary-grid, .form-grid { grid-template-columns: 1fr 1fr; }
+  .form-grid { grid-template-columns: 1fr 1fr; }
+  .summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .summary-card {
+    padding: 8px 6px;
+    min-height: 0;
+    border-radius: 10px;
+    text-align: center;
+  }
+  .summary-card .label {
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .summary-card .value {
+    margin-top: 2px;
+    font-size: 18px;
+  }
+  .summary-card .hint { display: none; }
   .books-grid { grid-template-columns: 1fr; }
   .metrics {
     grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -979,9 +1000,12 @@ body.is-reordering-books {
   }
 }
 @media (max-width: 560px) {
-  .summary-grid, .form-grid { grid-template-columns: 1fr; }
-  .summary-card .value { font-size: 22px; }
+  .form-grid { grid-template-columns: 1fr; }
   .preview-table-wrap { max-height: min(50vh, 480px); }
+  .summary-grid { gap: 4px; }
+  .summary-card { padding: 6px 4px; border-radius: 8px; }
+  .summary-card .label { font-size: 9px; }
+  .summary-card .value { font-size: 16px; }
   .metrics { gap: 4px; }
   .metric { padding: 6px 3px; border-radius: 8px; }
   .metric .label { font-size: 9px; }
