@@ -1554,6 +1554,8 @@
   }
 
   function bindLineEditor(root) {
+    if (root.getAttribute("data-line-editor-bound") === "1") return;
+    root.setAttribute("data-line-editor-bound", "1");
     function refreshQty(tr) {
       var pcs = tr.querySelector("[name=pcs]").value;
       var boxes = tr.querySelector("[name=boxes]").value;
@@ -1567,11 +1569,16 @@
     });
     root.addEventListener("click", function (ev) {
       if (ev.target.id === "btn-add-line") {
-        document.getElementById("line-body").insertAdjacentHTML("beforeend", lineRowHtml({ pcsPerBox: "", boxes: "" }));
+        ev.preventDefault();
+        var body = root.querySelector("#line-body");
+        if (body) body.insertAdjacentHTML("beforeend", lineRowHtml({ pcsPerBox: "", boxes: "" }));
+        return;
       }
       if (ev.target.closest("[data-remove-line]")) {
-        var body = document.getElementById("line-body");
+        ev.preventDefault();
+        var body = root.querySelector("#line-body");
         var tr = ev.target.closest("[data-line]");
+        if (!body || !tr) return;
         if (body.querySelectorAll("[data-line]").length === 1) {
           tr.querySelector("[name=pcs]").value = "";
           tr.querySelector("[name=boxes]").value = "";
