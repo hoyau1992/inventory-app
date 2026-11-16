@@ -870,7 +870,6 @@ body.is-reordering-books {
 .books-empty .btn { margin-top: 12px; }
 
 @media (max-width: 1100px) {
-  .metrics { grid-template-columns: repeat(3, 1fr); }
   .ledgers { grid-template-columns: 1fr; }
   .table-card { max-height: none; }
 }
@@ -889,7 +888,27 @@ body.is-reordering-books {
   }
   .summary-grid, .form-grid { grid-template-columns: 1fr 1fr; }
   .books-grid { grid-template-columns: 1fr; }
-  .metrics { grid-template-columns: 1fr 1fr; }
+  .metrics {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .metric {
+    padding: 8px 4px;
+    border-radius: 10px;
+    min-width: 0;
+    text-align: center;
+  }
+  .metric .label {
+    font-size: 10px;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .metric .value {
+    margin-top: 2px;
+    font-size: 16px;
+  }
   .header-actions,
   .header-book-actions {
     width: 100%;
@@ -960,9 +979,13 @@ body.is-reordering-books {
   }
 }
 @media (max-width: 560px) {
-  .summary-grid, .form-grid, .metrics { grid-template-columns: 1fr; }
+  .summary-grid, .form-grid { grid-template-columns: 1fr; }
   .summary-card .value { font-size: 22px; }
   .preview-table-wrap { max-height: min(50vh, 480px); }
+  .metrics { gap: 4px; }
+  .metric { padding: 6px 3px; border-radius: 8px; }
+  .metric .label { font-size: 9px; }
+  .metric .value { font-size: 15px; }
 }
 
 .login-gate {
