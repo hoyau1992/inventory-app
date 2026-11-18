@@ -10,7 +10,6 @@
   var catalogQuery = "";
   var catalogFilter = "all"; // all | instock | zero
   var catalogSort = { key: "index", dir: "asc" };
-  var issueBannerHidden = false;
   var ledgerSort = { in: "asc", out: "asc" }; // asc = 順序, desc = 倒序
   var ledgerSelection = { in: {}, out: {} };
   var selectionProductCode = null;
@@ -296,12 +295,65 @@
     );
   }
 
+  var DISMISSED_ISSUES_KEY = "inventory-app-dismissed-issues-v1";
+
+  function issuesFingerprint(issues) {
+    return (issues || [])
+      .map(function (issue) {
+        return [issue.item, issue.side, issue.field, issue.original, issue.fixed, issue.note].join("\t");
+      })
+      .sort()
+      .join("\n");
+  }
+
+  function readDismissedIssueKeys() {
+    try {
+      if (!window.localStorage) return [];
+      var parsed = JSON.parse(window.localStorage.getItem(DISMISSED_ISSUES_KEY) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function writeDismissedIssueKeys(list) {
+    try {
+      if (!window.localStorage) return;
+      window.localStorage.setItem(DISMISSED_ISSUES_KEY, JSON.stringify(list));
+    } catch (err) {}
+  }
+
+  function isIssueBannerDismissed(issues) {
+    if (!issues || !issues.length) return true;
+    return readDismissedIssueKeys().indexOf(issuesFingerprint(issues)) !== -1;
+  }
+
+  function dismissIssueBanner(issues) {
+    var key = issuesFingerprint(issues);
+    if (!key) return;
+    var list = readDismissedIssueKeys();
+    if (list.indexOf(key) === -1) {
+      list.push(key);
+      writeDismissedIssueKeys(list);
+    }
+  }
+
+  function clearIssueBannerDismissal(issues) {
+    var key = issuesFingerprint(issues);
+    if (!key) return;
+    writeDismissedIssueKeys(
+      readDismissedIssueKeys().filter(function (item) {
+        return item !== key;
+      })
+    );
+  }
+
   function renderCatalog() {
     var summary = Store.catalogSummary(state.products);
     var rows = productsView();
     var issues = state.dataIssues || [];
     var banner = "";
-    if (issues.length && !issueBannerHidden) {
+    if (issues.length && !isIssueBannerDismissed(issues)) {
       banner =
         '<div class="issue-banner" id="issue-banner"><div><strong>資料修正紀錄</strong>' +
         issues
@@ -1111,7 +1163,6 @@
 
   function loadCurrentBookState() {
     state = Store.load();
-    issueBannerHidden = false;
     catalogQuery = "";
     catalogFilter = "all";
     catalogSort = { key: "index", dir: "asc" };
@@ -2009,7 +2060,7 @@
           products: imported.products
         });
         view = { name: "catalog", code: null };
-        issueBannerHidden = false;
+        clearIssueBannerDismissal(state.dataIssues);
         toast("已匯入 " + imported.products.length + " 款貨品");
       } catch (err) {
         toast(err.message || String(err), "error");
@@ -2029,7 +2080,7 @@
         persist(Store.replaceAll(parsed));
         Store.saveOriginal(parsed);
         view = { name: "catalog", code: null };
-        issueBannerHidden = false;
+        clearIssueBannerDismissal(state.dataIssues);
         toast("已還原 " + parsed.products.length + " 款貨品");
       } catch (err) {
         toast(err.message || String(err), "error");
@@ -2075,7 +2126,7 @@
     reset.archives = keptArchives;
     persist(Store.replaceAll(reset));
     view = { name: "catalog", code: null };
-    issueBannerHidden = false;
+    clearIssueBannerDismissal(state.dataIssues);
     toast("已重置為原始匯入資料");
   });
   el.fileExcel.addEventListener("change", function () {
@@ -2202,7 +2253,7 @@
   el.catalog.addEventListener("click", function (ev) {
     var hide = ev.target.closest("#btn-hide-issue");
     if (hide) {
-      issueBannerHidden = true;
+      dismissIssueBanner(state.dataIssues);
       renderCatalog();
       return;
     }
